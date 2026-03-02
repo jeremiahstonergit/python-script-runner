@@ -1,0 +1,23 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: python-script-runner
+spec:
+  template:
+    spec:
+      containerConcurrency: 1
+      containers:
+        - image: YOUR_REGISTRY/python-script-runner:latest
+          env:
+            - name: USER
+              value: "admin"
+            - name: PASSWORD
+              value: "change_me"
+            - name: RUN_TIMEOUT_SEC
+              value: "300"
+            - name: SCRIPTS_DIR
+              value: "/app/scripts"
+          resources:
+            limits:
+              cpu: "2"
+              memory: "2Gi"
