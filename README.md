@@ -1,6 +1,6 @@
 # Python Script Runner (FastAPI) for Knative Serving
 
-Это минимальный сервис под Knative Serving: веб-форма на `/` → загрузка файла → выбор обработчика → скачивание результата.
+Это минимальный сервис под Knative Serving с современным веб-интерфейсом: веб-форма на `/` → загрузка файла → выбор обработчика → скачивание результата.
 
 ## Как работает
 
@@ -11,14 +11,9 @@
   ```
   после завершения отдаёт `<tmp_out>` как скачивание.
 
-## Basic Auth (опционально)
+## Доступ
 
-Если задать ENV:
-- `USER`
-- `PASSWORD`
-
-то будет включён HTTP Basic Auth для `/` и `/run`.  
-Если переменные не заданы — доступ открыт.
+Интерфейс и запуск обработчиков доступны без HTTP Basic Auth. Если нужно ограничить доступ, используйте внешний слой защиты: ingress, gateway, identity-aware proxy или настройки платформы деплоя.
 
 ## Метаданные скриптов
 
@@ -35,14 +30,9 @@
 docker build -t python-script-runner:local .
 ```
 
-Запуск без auth:
+Запуск:
 ```bash
 docker run --rm -p 8080:8080 python-script-runner:local
-```
-
-Запуск с auth:
-```bash
-docker run --rm -p 8080:8080 -e USER=admin -e PASSWORD=change_me python-script-runner:local
 ```
 
 Открыть:
