@@ -9,8 +9,32 @@ from pathlib import Path
 
 import pandas as pd
 
-SOURCE_PROVIDERS = ["TIMEWEB", "BeGet", "SPRINTHOST.RU"]
+SOURCE_PROVIDERS = [
+    "TIMEWEB",
+    "BeGet",
+    "SPRINTHOST.RU",
+    "Tilda Publishing",
+    "Selectel",
+    "Yandex",
+    "McHost",
+    "Jino",
+    "DigitalOcean",
+    "masterhost",
+    "internet-pro",
+    "ihc.ru",
+    "vkcs",
+    "adminvps",
+]
 TARGET_PROVIDER = "SpaceWeb"
+PROVIDER_ALIASES = {
+    ".masterhost": "masterhost",
+}
+
+
+def normalize_provider(provider: str):
+    if not provider:
+        return provider
+    return PROVIDER_ALIASES.get(provider, provider)
 
 
 def normalize_service(service: str):
@@ -48,6 +72,9 @@ def parse_line(line: str):
     src_provider, src_service = parse_provider(source_part)
     tgt_provider, tgt_service = parse_provider(target_part)
 
+    src_provider = normalize_provider(src_provider)
+    tgt_provider = normalize_provider(tgt_provider)
+
     return domain, ip, src_provider, src_service, tgt_provider, tgt_service
 
 
@@ -73,6 +100,49 @@ def process_file(filename: Path, direction: str = "in"):
                     if service:
                         rows.append((domain, ip, tgt_provider, service))
     return rows
+
+
+def build_analytics(incoming, outgoing):
+    rows = []
+    providers = sorted({row[2] for row in incoming + outgoing})
+
+    for provider in providers:
+        shared_in = sum(1 for row in incoming if row[2] == provider and row[3] == "shared")
+        vps_in = sum(1 for row in incoming if row[2] == provider and row[3] == "vps_dedic")
+        shared_out = sum(1 for row in outgoing if row[2] == provider and row[3] == "shared")
+        vps_out = sum(1 for row in outgoing if row[2] == provider and row[3] == "vps_dedic")
+        rows.append((
+            provider,
+            shared_in,
+            vps_in,
+            shared_in + vps_in,
+            shared_out,
+            vps_out,
+            shared_out + vps_out,
+            shared_in + vps_in + shared_out + vps_out,
+        ))
+
+    rows.append((
+        "TOTAL",
+        sum(row[1] for row in rows),
+        sum(row[2] for row in rows),
+        sum(row[3] for row in rows),
+        sum(row[4] for row in rows),
+        sum(row[5] for row in rows),
+        sum(row[6] for row in rows),
+        sum(row[7] for row in rows),
+    ))
+
+    return pd.DataFrame(rows, columns=[
+        "Provider",
+        "Shared in",
+        "VPS in",
+        "Total in",
+        "Shared out",
+        "VPS out",
+        "Total out",
+        "Grand total",
+    ])
 
 
 def load_inputs_from_zip(zip_path: Path) -> tuple[Path, Path, tempfile.TemporaryDirectory]:
@@ -120,13 +190,23 @@ def main():
         outgoing = process_file(domains_out, "out")
 
         shared_in = pd.DataFrame([r for r in incoming if r[3] == "shared"],
-                                columns=["Domain", "Original IP", "From Provider", "Service"])
+                                 columns=["Domain", "Original IP", "From Provider", "Service"])
         vps_in = pd.DataFrame([r for r in incoming if r[3] == "vps_dedic"],
-                             columns=["Domain", "Original IP", "From Provider", "Service"])
+                              columns=["Domain", "Original IP", "From Provider", "Service"])
         shared_out = pd.DataFrame([r for r in outgoing if r[3] == "shared"],
-                                 columns=["Domain", "Original IP", "To Provider", "Service"])
+                                  columns=["Domain", "Original IP", "To Provider", "Service"])
         vps_out = pd.DataFrame([r for r in outgoing if r[3] == "vps_dedic"],
-                              columns=["Domain", "Original IP", "To Provider", "Service"])
+                               columns=["Domain", "Original IP", "To Provider", "Service"])
+
+        for df, provider_col in (
+            (shared_out, "To Provider"),
+            (vps_out, "To Provider"),
+            (shared_in, "From Provider"),
+            (vps_in, "From Provider"),
+        ):
+            df.sort_values([provider_col, "Domain"], inplace=True, ignore_index=True)
+
+        analytics = build_analytics(incoming, outgoing)
 
         outp.parent.mkdir(parents=True, exist_ok=True)
         with pd.ExcelWriter(outp) as writer:
@@ -134,6 +214,7 @@ def main():
             vps_out.to_excel(writer, sheet_name="VPS out", index=False)
             shared_in.to_excel(writer, sheet_name="Shared in", index=False)
             vps_in.to_excel(writer, sheet_name="VPS in", index=False)
+            analytics.to_excel(writer, sheet_name="Analytics", index=False)
 
         print(f"OK: создан файл {outp}")
     finally:
